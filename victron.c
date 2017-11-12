@@ -1,25 +1,20 @@
 /* victron.c
- * This file is part of kplex
  * Copyright  AxelGL
  * For copying information see the file COPYING distributed with this software
  *
  * This file contains code for Victron Solar Charger. 
-   It reads the data from the UART interface and converts it to a NMEA string according to the statement in the kplex.conf file. 
+   It reads the data from the UART interface and converts it to a NMEA string according to the statement on the command line. 
    Example: 
    [victron]
 filename=/dev/ttyAMA0
-direction=in
-baud=19200
-eol=rn
-strict=no
 #nmeastring=V,$SSMTW,C
 #nmeastring=V,$IIDPT,0
 #nmeastring=I,$SSMTW,C
-nmeastring=P,$IIMTW,C
+#nmeastring=P,$IIMTW,C
 #nmeastring=W,$SSMTW,C
 #nmeastring=W,$IIXDR,C
 
-There is a new command nmeastring that configures the NMEA string that is transmitted. 
+There is a nmeastring that configures the NMEA string that is transmitted. 
 First value: Can be 
 V: Battery Voltage 
 I: Battery Current
@@ -29,7 +24,7 @@ Y: Energy harvest from yesterday
 O: Energy harvest Overall  
 
 Next is the NMEA String that is used. Depending on the string the data is displayed in the appropriate format:
-IIXDR is the default. Others an be used to show data on devices that cannot display IIXDR )which is probably the norm). 
+IIXDR is the default. Others an be used to show data on devices that cannot display IIXDR (which is probably the norm). 
 The last letter defines the Unit that is used in the NMEA String. This way a battery Voltage can for example 
 be sent as a DPT Value with the unit m and displayed on a display that will only display depth values. It is also possible
 to use identical NMEA String for two different values, they will then be displayed  */
@@ -58,24 +53,15 @@ to use identical NMEA String for two different values, they will then be display
 #define DEFSERIALQSIZE 128
 #define BUFSIZE 1024
 
-struct if_serial {
-    int fd;
-    char *slavename;            /* link to pty slave (if it exists) */
-    int saved;                  /* Are stored terminal settins valid? */
-    struct termios otermios;    /* To restore previous interface settings
-                                 *  on exit */
-};
 
 
 struct victron_nmea {
-     char nmeastring[7];    //
+     char nmeastring[7];    // String for the corresponding NMEA sentence
      char unit;             // Each value can have a different unit to match to receiver
 };
       
 char nmeadispl_temp = 0xff;
 char nmeastring[7];
-char nmeatype[9];   // Which nmea data  should be send
-char nmeaadd = 0;   // send both nmeatypes or just one
 
 struct victron_nmea nmeastring0;
 struct victron_nmea nmeastringv;
@@ -115,9 +101,9 @@ int read_victron(int fd, char *buf)
 #define IBUFSIZE 500
   char bufint[IBUFSIZE];     // Buffer for data from UART
 
-    tcflush(fd, TCIFLUSH);
+  tcflush(fd, TCIFLUSH);
 
-  do {    // Repeat until data is there
+  do {    // Repeat until enough data is there
   amount = 0;     // Amount of data read from Victron
   number = 0;     // Number of NMEA char to send to network 
 
@@ -125,11 +111,10 @@ int read_victron(int fd, char *buf)
   int i = 0;
   int j = 0;
   unsigned char sum = 1;
-  char nmea_set = 0;      // Special NMEA String in kplex.opt requested
 
-            printf("New Start ****************\n");
+   //         printf("New Start ****************\n");
 
-  while (sum != 0) {  
+  while (sum != 0) {    // read approx. 3 Blocks of data or until checksum is ok.  
     amount = 0;
     i = 0;
     // Initialize Buffer
@@ -138,9 +123,9 @@ int read_victron(int fd, char *buf)
     i= 0;
     do {
         usleep(40000);
-        signed char chars_read = read(fd,&bufint[amount],50) ;   // Get approx. two blocks data from input
+        signed char chars_read = read(fd,&bufint[amount],50) ;   // Get approx. 2-3  blocks of data from input
         if (chars_read <= 0) {
-		nodata = 1; 
+		nodata = 1;     // no data received, revert to failure data 
 		break;
 	}
 	amount += chars_read; 
@@ -207,7 +192,7 @@ int read_victron(int fd, char *buf)
 
       printf("nmeadispl_temp  %x nodata %i\n", nmeadispl_temp, nodata);
 
-  if (nodata == 1) {
+  if (nodata == 1) {              // Got no data from interface, send dummy values (88.8) so user sees issue
 	  printf("Nodata\n");
     switch(nmeadispl_temp)  {
 	    case 0x02:    sprintf(bufi,"%s,88.8,%c\n\r",nmeastringv.nmeastring,nmeastringv.unit); printf("bufi:%s",bufi); return(15);
@@ -223,9 +208,9 @@ int read_victron(int fd, char *buf)
 	  return (0);
   }
 
-  printf("Startblock: %s Limiter %x\n",startblock+2, limiter[2]);
+  //printf("Startblock: %s Limiter %x\n",startblock+2, limiter[2]);
   ptr = strtok(startblock, limiter);    // PTR contains the next token from the data from the victron after checksum
-    //printf("PTR = %s startblock = %x ptr = %x \n",ptr, startblock, ptr);
+  //printf("PTR = %s startblock = %x ptr = %x \n",ptr, startblock, ptr);
 
   while(strcmp(ptr, "Checksum") != NULL)
   {
@@ -497,11 +482,7 @@ int read_victron(int fd, char *buf)
 
   strncpy(bufi, "\n\r\0", 3);    //  Checksum not implemented
   number += 2;
-           printf("Final Data %i: %s",number, buf);
-//     if (number < 5)  {
- //        for (i=0; i<100; i++)
-//            printf( "Data %i %c %x",i, bufint[i], bufint[i]);
-  //   }
+    //       printf("Final Data %i: %s",number, buf);
   } while (number < 10);   //  Until we got some data
   return(number);
 }
